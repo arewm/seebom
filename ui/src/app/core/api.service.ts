@@ -15,6 +15,7 @@ import {
   AffectedProject,
   DependencyStatsResponse,
   LicenseExceptionsFile,
+  ArchivedPackageInfo,
 } from './api.models';
 
 @Injectable({
@@ -91,6 +92,10 @@ export class ApiService {
 
   getLicenseExceptions(): Observable<LicenseExceptionsFile> {
     return this.http.get<LicenseExceptionsFile>(`${this.baseUrl}/license-exceptions`);
+  }
+
+  getArchivedPackages(): Observable<ArchivedPackageInfo[]> {
+    return this.http.get<ArchivedPackageInfo[]>(`${this.baseUrl}/packages/archived`);
   }
 }
 

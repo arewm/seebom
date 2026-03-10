@@ -118,12 +118,24 @@ func Categorize(licenseID string) Category {
 	p := activePolicy
 	policyMu.RUnlock()
 
+	// Exact match first.
 	if p.permissive[id] {
 		return CategoryPermissive
 	}
-
 	if p.copyleft[id] {
 		return CategoryCopyleft
+	}
+
+	// Prefix match for SPDX modifiers (e.g. "MPL-2.0-no-copyleft-exception" → "MPL-2.0").
+	for base := range p.permissive {
+		if strings.HasPrefix(id, base+"-") {
+			return CategoryPermissive
+		}
+	}
+	for base := range p.copyleft {
+		if strings.HasPrefix(id, base+"-") {
+			return CategoryCopyleft
+		}
 	}
 
 	return CategoryUnknown
@@ -182,14 +194,21 @@ func CheckWithExceptions(packageNames, packageLicenses []string, exceptions *Exc
 		}
 		entry.count++
 
-		// Check per-package exception.
-		if exceptions != nil && !entry.blanketExempt && (cat == CategoryCopyleft || cat == CategoryUnknown) {
+		// Determine if this package is exempted or non-compliant.
+		if entry.blanketExempt {
+			// Blanket exception covers ALL packages for this license.
+			entry.exempted = append(entry.exempted, name)
+		} else if cat == CategoryPermissive {
+			// Permissive licenses are always compliant – don't track packages.
+		} else if exceptions != nil {
+			// Copyleft or unknown: check per-package exception.
 			if exempt, _ := exceptions.IsExempt(name, lic); exempt {
 				entry.exempted = append(entry.exempted, name)
 			} else {
 				entry.packages = append(entry.packages, name)
 			}
 		} else {
+			// No exceptions loaded: all copyleft/unknown packages are non-compliant.
 			entry.packages = append(entry.packages, name)
 		}
 	}

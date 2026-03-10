@@ -235,6 +235,17 @@ func main() {
 		writeJSON(w, http.StatusOK, license.GetPolicy())
 	})
 
+	// ── Archived GitHub Packages ───────────────────────────────────────
+	mux.HandleFunc("GET /api/v1/packages/archived", func(w http.ResponseWriter, r *http.Request) {
+		packages, err := chClient.QueryArchivedPackages(r.Context())
+		if err != nil {
+			log.Printf("ERROR: archived packages: %v", err)
+			writeError(w, http.StatusInternalServerError, "Failed to fetch archived packages")
+			return
+		}
+		writeJSON(w, http.StatusOK, packages)
+	})
+
 	// CORS middleware for Angular dev server.
 	handler := corsMiddleware(mux)
 

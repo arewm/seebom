@@ -17,6 +17,8 @@ func TestCategorize(t *testing.T) {
 		{"GPL-3.0-only", CategoryCopyleft},
 		{"AGPL-3.0-or-later", CategoryCopyleft},
 		{"MPL-2.0", CategoryCopyleft},
+		{"MPL-2.0-no-copyleft-exception", CategoryCopyleft},
+		{"Apache-2.0-with-LLVM-exception", CategoryPermissive},
 		{"NOASSERTION", CategoryUnknown},
 		{"NONE", CategoryUnknown},
 		{"", CategoryUnknown},
@@ -59,6 +61,10 @@ func TestCheck(t *testing.T) {
 	if mitResult.Category != CategoryPermissive {
 		t.Errorf("expected permissive, got %s", mitResult.Category)
 	}
+	// Permissive licenses should never have non-compliant packages.
+	if len(mitResult.NonCompliantPackages) != 0 {
+		t.Errorf("expected 0 non-compliant packages for permissive MIT, got %v", mitResult.NonCompliantPackages)
+	}
 
 	gplResult, ok := byLicense["GPL-3.0-only"]
 	if !ok {
@@ -93,9 +99,43 @@ func TestCheckWithExceptions_BlanketExempt(t *testing.T) {
 	if mpl.ExemptionReason == "" {
 		t.Error("expected blanket exemption reason for MPL-2.0")
 	}
-	// Blanket exempt: all packages still in NonCompliantPackages (= all packages list)
 	if mpl.PackageCount != 2 {
 		t.Errorf("expected 2 MPL packages, got %d", mpl.PackageCount)
+	}
+	// Blanket exempt: all packages should be in ExemptedPackages, NOT NonCompliantPackages.
+	if len(mpl.ExemptedPackages) != 2 {
+		t.Errorf("expected 2 exempted packages, got %v", mpl.ExemptedPackages)
+	}
+	if len(mpl.NonCompliantPackages) != 0 {
+		t.Errorf("expected 0 non-compliant packages for blanket-exempted license, got %v", mpl.NonCompliantPackages)
+	}
+}
+
+func TestCheckWithExceptions_BlanketPrefixMatch(t *testing.T) {
+	// MPL-2.0-no-copyleft-exception should be covered by a blanket exception for MPL-2.0.
+	names := []string{"pkg-slug"}
+	licenses := []string{"MPL-2.0-no-copyleft-exception"}
+
+	ef := &ExceptionsFile{
+		BlanketExceptions: []BlanketException{
+			{ID: "blanket-mpl", License: "MPL-2.0", Status: "approved", Comment: "MPL ok"},
+		},
+	}
+	idx := BuildIndex(ef)
+
+	results := CheckWithExceptions(names, licenses, idx)
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	r := results[0]
+	if r.ExemptionReason == "" {
+		t.Error("expected blanket exemption reason for MPL-2.0-no-copyleft-exception via prefix match")
+	}
+	if len(r.ExemptedPackages) != 1 || r.ExemptedPackages[0] != "pkg-slug" {
+		t.Errorf("expected pkg-slug exempted, got %v", r.ExemptedPackages)
+	}
+	if len(r.NonCompliantPackages) != 0 {
+		t.Errorf("expected 0 non-compliant, got %v", r.NonCompliantPackages)
 	}
 }
 

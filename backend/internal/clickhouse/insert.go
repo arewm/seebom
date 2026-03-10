@@ -113,7 +113,8 @@ func (c *Client) InsertLicenseCompliance(ctx context.Context, items []models.Lic
 	batch, err := c.Conn.PrepareBatch(ctx,
 		`INSERT INTO license_compliance (
 			checked_at, sbom_id, source_file, license_id,
-			category, package_count, non_compliant_packages
+			category, package_count, non_compliant_packages,
+			exempted_packages, exemption_reason
 		)`)
 	if err != nil {
 		return fmt.Errorf("failed to prepare license_compliance batch: %w", err)
@@ -121,6 +122,10 @@ func (c *Client) InsertLicenseCompliance(ctx context.Context, items []models.Lic
 
 	now := time.Now()
 	for _, item := range items {
+		exempted := item.ExemptedPackages
+		if exempted == nil {
+			exempted = []string{}
+		}
 		if err := batch.Append(
 			now,
 			item.SBOMID,
@@ -129,6 +134,8 @@ func (c *Client) InsertLicenseCompliance(ctx context.Context, items []models.Lic
 			item.Category,
 			item.PackageCount,
 			item.NonCompliantPackages,
+			exempted,
+			item.ExemptionReason,
 		); err != nil {
 			return fmt.Errorf("failed to append license_compliance: %w", err)
 		}

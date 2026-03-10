@@ -36,6 +36,10 @@ import { HorizontalBarChartComponent, BarItem } from '../../shared/charts/horizo
             <span class="kpi-value">{{ stats.suppressed_by_vex }}</span>
             <span class="kpi-label">Suppressed by VEX</span>
           </div>
+          <div class="kpi-card ok">
+            <span class="kpi-value">{{ stats.exempted_packages }}</span>
+            <span class="kpi-label">Exempted Licenses</span>
+          </div>
           <div class="kpi-card">
             <span class="kpi-value">{{ stats.total_vex_statements }}</span>
             <span class="kpi-label">VEX Statements</span>
@@ -66,6 +70,25 @@ import { HorizontalBarChartComponent, BarItem } from '../../shared/charts/horizo
             <h3>Packages by License Category</h3>
             <app-horizontal-bar-chart [bars]="licenseBars" />
           </div>
+        </div>
+
+        <div class="refresh-banner" *ngIf="stats.last_cve_refresh">
+          <span class="refresh-label">Last CVE Refresh:</span>
+          <span class="refresh-time">{{ stats.last_cve_refresh | date:'medium' }}</span>
+          <span class="refresh-vulns" *ngIf="stats.new_vulns_since_refresh">
+            {{ stats.new_vulns_since_refresh }} new vulns found
+          </span>
+          <span class="refresh-ok" *ngIf="!stats.new_vulns_since_refresh">
+            ✓ No new vulnerabilities
+          </span>
+        </div>
+
+        <div class="warning-banner" *ngIf="stats.archived_repos_count && stats.archived_repos_count > 0">
+          <span class="warning-icon">⚠️</span>
+          <span class="warning-text">
+            <strong>{{ stats.archived_repos_count }}</strong> archived GitHub repositories detected in your dependencies.
+            <a routerLink="/archived-packages">View Details →</a>
+          </span>
         </div>
 
         <div class="quick-links">
@@ -117,6 +140,27 @@ import { HorizontalBarChartComponent, BarItem } from '../../shared/charts/horizo
     .arrow { color: var(--text-muted); }
     .quick-link:hover .arrow { color: var(--accent); }
 
+    .refresh-banner {
+      display: flex; align-items: center; gap: 10px; padding: 10px 16px;
+      background: var(--surface); border: 1px solid var(--border); border-radius: 4px;
+      margin-bottom: 12px; font-size: 0.78rem;
+    }
+    .refresh-label { color: var(--text-secondary); font-weight: 500; }
+    .refresh-time { color: var(--text); font-weight: 600; }
+    .refresh-vulns { color: var(--severity-critical); font-weight: 600; }
+    .refresh-ok { color: var(--status-success); font-weight: 600; }
+
+    .warning-banner {
+      display: flex; align-items: center; gap: 10px; padding: 12px 16px;
+      background: color-mix(in srgb, var(--severity-high) 15%, transparent);
+      border: 1px solid var(--severity-high); border-radius: 4px;
+      margin-bottom: 12px; font-size: 0.85rem;
+    }
+    .warning-icon { font-size: 1.2rem; }
+    .warning-text { color: var(--text); }
+    .warning-text a { color: var(--accent); font-weight: 600; margin-left: 8px; }
+    .warning-text a:hover { text-decoration: underline; }
+
     .loading-state { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 80px 0; color: var(--text-muted); }
     .spinner {
       width: 28px; height: 28px; border: 2px solid #e5e7eb; border-top-color: var(--accent);
@@ -156,6 +200,7 @@ export class DashboardComponent implements OnInit {
     this.licenseSegments = [
       { label: 'Permissive', value: lb['permissive'] || 0, color: '#0D6B5E' },
       { label: 'Copyleft', value: lb['copyleft'] || 0, color: '#C43030' },
+      { label: 'Exempted', value: s.exempted_packages || 0, color: '#E8871E' },
       { label: 'Unknown', value: lb['unknown'] || 0, color: '#9ca3af' },
     ];
     this.licenseBars = [...this.licenseSegments];

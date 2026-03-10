@@ -54,5 +54,12 @@ export const routes: Routes = [
     loadComponent: () =>
       import('./features/vex/vex-list.component').then((m) => m.VEXListComponent),
   },
+  {
+    path: 'archived-packages',
+    loadComponent: () =>
+      import('./features/archived-packages/archived-packages.component').then(
+        (m) => m.ArchivedPackagesComponent
+      ),
+  },
   { path: '**', redirectTo: '' },
 ];

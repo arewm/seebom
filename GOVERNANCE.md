@@ -62,9 +62,10 @@ Maintainers are the project's technical leadership. They are responsible for the
 
 Current maintainers:
 
-| Name | GitHub | Area |
-|------|--------|------|
-| Markus Fahlandt | [@mfahlandt](https://github.com/mfahlandt) | Project Lead |
+| Name           | GitHub                                    | Area                | Affiliation |
+|----------------|-------------------------------------------|---------------------|--------------|
+| Mario Fahlandt | [@mfahlandt](https://github.com/mfahlandt) | Project Lead / Core | Kubermatic |
+| Koray Oksay    | [@koksay](https://github.com/koksay)   | K8s Implementation  | Kubermatic |
 
 Maintainers are responsible for:
 
@@ -145,6 +146,3 @@ All community members are expected to follow the [Code of Conduct](CODE_OF_CONDU
 Changes to this document require a pull request and approval by a supermajority (two-thirds) of current maintainers, with a minimum review period of 14 days.
 
 ---
-
-*This governance model is inspired by open-source best practices from projects like [kcp](https://github.com/kcp-dev/kcp), [Kubernetes](https://github.com/kubernetes/community), and [Envoy](https://github.com/envoyproxy/envoy).*
-

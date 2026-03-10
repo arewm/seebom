@@ -4,6 +4,8 @@ import { ScrollingModule } from '@angular/cdk/scrolling';
 import { ApiService } from '../../core/api.service';
 import { DependencyStatsResponse, DependencyStatsItem } from '../../core/api.models';
 
+type SortField = 'projects' | 'name' | 'versions' | 'vulns';
+
 @Component({
   selector: 'app-dependency-stats',
   standalone: true,
@@ -23,14 +25,22 @@ import { DependencyStatsResponse, DependencyStatsItem } from '../../core/api.mod
 
       <div class="table-header" *ngIf="stats">
         <span class="col-rank">#</span>
-        <span class="col-name">Package</span>
-        <span class="col-projects">Projects</span>
-        <span class="col-versions">Versions</span>
-        <span class="col-vulns">Vulns</span>
+        <span class="col-name sortable" (click)="toggleSort('name')" [class.active]="sortField === 'name'">
+          Package {{ sortField === 'name' ? (sortAsc ? '↑' : '↓') : '' }}
+        </span>
+        <span class="col-projects sortable" (click)="toggleSort('projects')" [class.active]="sortField === 'projects'">
+          Projects {{ sortField === 'projects' ? (sortAsc ? '↑' : '↓') : '' }}
+        </span>
+        <span class="col-versions sortable" (click)="toggleSort('versions')" [class.active]="sortField === 'versions'">
+          Versions {{ sortField === 'versions' ? (sortAsc ? '↑' : '↓') : '' }}
+        </span>
+        <span class="col-vulns sortable" (click)="toggleSort('vulns')" [class.active]="sortField === 'vulns'">
+          Vulns {{ sortField === 'vulns' ? (sortAsc ? '↑' : '↓') : '' }}
+        </span>
       </div>
 
       <cdk-virtual-scroll-viewport itemSize="56" class="viewport" *ngIf="stats">
-        <div *cdkVirtualFor="let dep of stats.top_dependencies; let i = index; trackBy: trackBy" class="dep-row">
+        <div *cdkVirtualFor="let dep of sortedDeps; let i = index; trackBy: trackBy" class="dep-row">
           <span class="col-rank">{{ i + 1 }}</span>
           <div class="col-name">
             <span class="pkg-name">{{ dep.package_name }}</span>
@@ -69,6 +79,11 @@ import { DependencyStatsResponse, DependencyStatsItem } from '../../core/api.mod
       background: var(--bg); border-radius: 2px; font-weight: 600; font-size: 0.7rem;
       color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 2px;
     }
+    .sortable {
+      cursor: pointer; user-select: none; transition: color 0.15s;
+    }
+    .sortable:hover { color: var(--accent); }
+    .sortable.active { color: var(--accent); }
     .viewport { flex: 1; min-height: 400px; }
     .dep-row {
       height: 52px; display: flex; align-items: center; gap: 16px;
@@ -92,6 +107,9 @@ import { DependencyStatsResponse, DependencyStatsItem } from '../../core/api.mod
 })
 export class DependencyStatsComponent implements OnInit {
   stats: DependencyStatsResponse | null = null;
+  sortedDeps: DependencyStatsItem[] = [];
+  sortField: SortField = 'projects';
+  sortAsc = false;
 
   constructor(
     private readonly api: ApiService,
@@ -101,10 +119,40 @@ export class DependencyStatsComponent implements OnInit {
   ngOnInit(): void {
     this.api.getDependencyStats(100).subscribe((data) => {
       this.stats = data;
+      this.applySort();
       this.cdr.markForCheck();
+    });
+  }
+
+  toggleSort(field: SortField): void {
+    if (this.sortField === field) {
+      this.sortAsc = !this.sortAsc;
+    } else {
+      this.sortField = field;
+      this.sortAsc = field === 'name';
+    }
+    this.applySort();
+    this.cdr.markForCheck();
+  }
+
+  private applySort(): void {
+    if (!this.stats) return;
+    const dir = this.sortAsc ? 1 : -1;
+    this.sortedDeps = [...this.stats.top_dependencies].sort((a, b) => {
+      switch (this.sortField) {
+        case 'projects':
+          return (a.project_count - b.project_count) * dir;
+        case 'name':
+          return a.package_name.localeCompare(b.package_name) * dir;
+        case 'versions':
+          return (a.versions.length - b.versions.length) * dir;
+        case 'vulns':
+          return (a.vuln_count - b.vuln_count) * dir;
+        default:
+          return 0;
+      }
     });
   }
 
   trackBy(_i: number, dep: DependencyStatsItem): string { return dep.package_name + dep.purl; }
 }
-

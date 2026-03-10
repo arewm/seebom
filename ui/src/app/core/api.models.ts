@@ -9,7 +9,23 @@ export interface DashboardStats {
   medium_vulns: number;
   low_vulns: number;
   license_breakdown: Record<string, number>;
+  exempted_packages: number;
   total_vex_statements: number;
+  last_cve_refresh?: string;
+  new_vulns_since_refresh?: number;
+  archived_repos_count?: number;
+}
+
+export interface ArchivedPackageInfo {
+  sbom_id: string;
+  source_file: string;
+  project_name: string;
+  project_version: string;
+  package_name: string;
+  package_purl: string;
+  repo: string;
+  last_pushed: string;
+  stars: number;
 }
 
 export interface PaginatedResponse<T> {
@@ -54,7 +70,10 @@ export interface LicenseComplianceItem {
   license_id: string;
   category: string;
   package_count: number;
+  sbom_count: number;
   non_compliant_packages?: string[];
+  exempted_packages?: string[];
+  exemption_reason?: string;
   affected_sboms?: LicenseAffectedSBOM[];
 }
 
@@ -102,6 +121,8 @@ export interface SBOMLicenseBreakdownItem {
   category: string;
   package_count: number;
   packages: string[];
+  exempted_packages?: string[];
+  exemption_reason?: string;
 }
 
 export interface ProjectLicenseViolation {

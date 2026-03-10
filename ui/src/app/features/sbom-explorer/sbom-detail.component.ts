@@ -8,6 +8,7 @@ import {
   VulnerabilityListItem,
   SBOMLicenseBreakdownItem,
   DependencyNode,
+  ArchivedPackageInfo,
 } from '../../core/api.models';
 import { forkJoin } from 'rxjs';
 
@@ -53,7 +54,7 @@ type Tab = 'vulns' | 'licenses' | 'deps';
           <div *cdkVirtualFor="let vuln of vulns; trackBy: trackByVuln" class="vuln-row">
             <span class="severity-badge" [class]="'sev-' + vuln.severity.toLowerCase()">{{ vuln.severity }}</span>
             <div class="vuln-info">
-              <a [routerLink]="['/vulnerabilities']" [queryParams]="{search: vuln.vuln_id}" class="vuln-id">
+              <a [routerLink]="['/cve-impact']" [queryParams]="{vuln: vuln.vuln_id}" class="vuln-id">
                 {{ vuln.vuln_id }}
               </a>
               <span class="summary">{{ vuln.summary }}</span>
@@ -71,14 +72,21 @@ type Tab = 'vulns' | 'licenses' | 'deps';
         <div class="license-grid">
           <div *ngFor="let lic of licenses"
                class="license-card"
-               [class]="'cat-' + lic.category"
+               [class]="getLicenseCardClass(lic)"
                [class.expanded]="expandedLicense === lic.license_id"
                (click)="toggleLicense(lic.license_id)">
             <div class="lic-header">
               <span class="lic-id">{{ lic.license_id || 'Unknown' }}</span>
               <span class="lic-cat">{{ lic.category }}</span>
+              <span class="lic-exempted-badge" *ngIf="lic.exempted_packages?.length"
+                    [title]="lic.exemption_reason || 'Approved exception'">
+                ✓ Exempted
+              </span>
               <span class="lic-count">{{ lic.package_count }} pkgs</span>
               <span class="lic-toggle">{{ expandedLicense === lic.license_id ? '▾' : '▸' }}</span>
+            </div>
+            <div class="lic-exemption-note" *ngIf="lic.exemption_reason && expandedLicense === lic.license_id">
+              {{ lic.exemption_reason }}
             </div>
             <div class="lic-packages" *ngIf="expandedLicense === lic.license_id && lic.packages?.length">
               <div *ngFor="let pkg of lic.packages" class="lic-pkg">{{ pkg }}</div>
@@ -89,12 +97,25 @@ type Tab = 'vulns' | 'licenses' | 'deps';
 
       <!-- Dependencies Tab -->
       <div *ngIf="activeTab === 'deps'" class="tab-content">
-        <cdk-virtual-scroll-viewport itemSize="40" class="viewport">
+        <div class="dep-table-header">
+          <span class="dep-col-name">Package</span>
+          <span class="dep-col-version">Version</span>
+          <span class="dep-col-license">License</span>
+        </div>
+        <cdk-virtual-scroll-viewport itemSize="44" class="viewport">
           <div *cdkVirtualFor="let node of flatDeps; trackBy: trackByDep" class="dep-row"
-               [style.padding-left.px]="node.level * 24">
-            <span class="dep-name">{{ node.name }}</span>
+               [style.padding-left.px]="12 + node.level * 24">
+            <span class="dep-name" [title]="node.purl || node.name">
+              {{ node.name }}
+              <span class="archived-tag" *ngIf="isArchivedPurl(node.purl)" title="This package uses an archived GitHub repository">📦 ARCHIVED</span>
+            </span>
             <span class="dep-version">{{ node.version }}</span>
-            <span class="dep-license" [class.copyleft]="isCopyleft(node.license)">{{ node.license }}</span>
+            <span class="dep-license"
+                  [class.copyleft]="isCopyleft(node.license) && !isExemptedLicense(node.license)"
+                  [class.exempted]="isCopyleft(node.license) && isExemptedLicense(node.license)">
+              {{ node.license || '—' }}
+              <span class="dep-exempted-tag" *ngIf="isCopyleft(node.license) && isExemptedLicense(node.license)">✓</span>
+            </span>
           </div>
         </cdk-virtual-scroll-viewport>
       </div>
@@ -155,11 +176,21 @@ type Tab = 'vulns' | 'licenses' | 'deps';
     }
     .cat-permissive { background: var(--surface-alt); border: 1px solid var(--border); }
     .cat-copyleft { background: var(--severity-critical-bg); border: 1px solid #fecaca; }
+    .cat-copyleft-exempted { background: var(--status-success-bg); border: 1px solid var(--status-success); }
     .cat-unknown { background: var(--surface-alt); border: 1px solid var(--border); }
     .lic-id { font-weight: 600; font-size: 0.85rem; }
     .lic-cat { font-size: 0.7rem; text-transform: uppercase; color: var(--text-secondary); letter-spacing: 0.03em; }
+    .lic-exempted-badge {
+      padding: 1px 6px; border-radius: 2px; font-size: 0.6rem; font-weight: 600;
+      background: var(--status-success-bg); color: var(--status-success);
+      text-transform: uppercase; letter-spacing: 0.03em; cursor: help;
+    }
     .lic-count { font-size: 0.8rem; color: var(--text-secondary); margin-left: auto; }
     .lic-toggle { font-size: 0.7rem; color: var(--text-muted); }
+    .lic-exemption-note {
+      font-size: 0.7rem; color: var(--text-secondary); font-style: italic;
+      padding: 2px 14px 6px; border-top: 1px solid var(--border);
+    }
     .lic-packages {
       border-top: 1px solid #e5e7eb; padding: 8px 14px;
       display: flex; flex-wrap: wrap; gap: 4px;
@@ -169,14 +200,45 @@ type Tab = 'vulns' | 'licenses' | 'deps';
       font-size: 0.72rem; color: var(--dark); background: var(--surface); border: 1px solid var(--border);
       padding: 2px 8px; border-radius: 2px; white-space: nowrap;
     }
-    .dep-row {
-      height: 36px; display: flex; align-items: center; gap: 12px;
-      border-bottom: 1px solid #f3f4f6; font-size: 0.8rem;
+    .dep-table-header {
+      display: flex; align-items: center; gap: 16px; padding: 8px 12px;
+      background: var(--bg); border-radius: 2px; font-weight: 600; font-size: 0.7rem;
+      color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.04em;
+      margin-bottom: 2px; border-bottom: 1px solid var(--border);
     }
-    .dep-name { font-weight: 500; min-width: 200px; }
-    .dep-version { color: var(--text-secondary); min-width: 100px; }
-    .dep-license { color: var(--status-success); font-size: 0.75rem; }
+    .dep-col-name { flex: 1; min-width: 0; }
+    .dep-col-version { width: 140px; flex-shrink: 0; }
+    .dep-col-license { width: 180px; flex-shrink: 0; }
+    .dep-row {
+      height: 42px; display: flex; align-items: center; gap: 16px;
+      padding: 0 12px; border-bottom: 1px solid var(--border); font-size: 0.82rem;
+      transition: background 0.1s;
+    }
+    .dep-row:hover { background: var(--surface-alt); }
+    .dep-name {
+      font-weight: 500; flex: 1; min-width: 0;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .archived-tag {
+      background: var(--severity-high); color: #fff;
+      padding: 1px 6px; border-radius: 2px; font-size: 0.6rem; font-weight: 600;
+      flex-shrink: 0;
+    }
+    .dep-version {
+      color: var(--text-secondary); width: 140px; flex-shrink: 0;
+      font-family: monospace; font-size: 0.78rem;
+    }
+    .dep-license {
+      color: var(--status-success); font-size: 0.75rem;
+      width: 180px; flex-shrink: 0; display: flex; align-items: center; gap: 4px;
+    }
     .copyleft { color: var(--severity-critical); }
+    .exempted { color: var(--status-warning); }
+    .dep-exempted-tag {
+      font-size: 0.6rem; font-weight: 700; color: var(--status-success);
+      background: var(--status-success-bg); padding: 0 3px; border-radius: 2px;
+    }
     .loading { padding: 24px; color: var(--text-muted); }
   `],
 })
@@ -187,6 +249,7 @@ export class SbomDetailComponent implements OnInit {
   flatDeps: FlatDep[] = [];
   activeTab: Tab = 'vulns';
   expandedLicense: string | null = null;
+  private archivedRepos = new Set<string>();
 
   constructor(
     private readonly route: ActivatedRoute,
@@ -203,10 +266,13 @@ export class SbomDetailComponent implements OnInit {
       vulns: this.api.getSbomVulnerabilities(sbomId),
       licenses: this.api.getSbomLicenses(sbomId),
       deps: this.api.getSbomDependencies(sbomId),
-    }).subscribe(({ detail, vulns, licenses, deps }) => {
+      archived: this.api.getArchivedPackages(),
+    }).subscribe(({ detail, vulns, licenses, deps, archived }) => {
       this.detail = detail;
       this.vulns = vulns;
       this.licenses = licenses;
+      this.buildExemptedSet();
+      this.buildArchivedSet(archived || []);
       this.flatDeps = this.flattenTree(deps);
       this.cdr.markForCheck();
     });
@@ -223,6 +289,46 @@ export class SbomDetailComponent implements OnInit {
   isCopyleft(license: string): boolean {
     return ['GPL', 'LGPL', 'AGPL', 'MPL', 'EPL', 'EUPL'].some((l) => license.toUpperCase().includes(l));
   }
+
+  isExemptedLicense(license: string): boolean {
+    return this.exemptedLicenseIds.has(license);
+  }
+
+  isArchivedPurl(purl: string): boolean {
+    if (!purl) return false;
+    const lower = purl.toLowerCase();
+    for (const repo of this.archivedRepos) {
+      if (lower.includes(repo)) return true;
+    }
+    return false;
+  }
+
+  getLicenseCardClass(lic: SBOMLicenseBreakdownItem): string {
+    if (lic.exempted_packages?.length && lic.category === 'copyleft') {
+      return 'cat-copyleft-exempted';
+    }
+    return 'cat-' + lic.category;
+  }
+
+  private buildExemptedSet(): void {
+    this.exemptedLicenseIds.clear();
+    for (const lic of this.licenses) {
+      if (lic.exempted_packages?.length) {
+        this.exemptedLicenseIds.add(lic.license_id);
+      }
+    }
+  }
+
+  private buildArchivedSet(archived: ArchivedPackageInfo[]): void {
+    this.archivedRepos.clear();
+    for (const pkg of archived) {
+      if (pkg.repo) {
+        this.archivedRepos.add(pkg.repo.toLowerCase());
+      }
+    }
+  }
+
+  private exemptedLicenseIds = new Set<string>();
 
   private flattenTree(nodes: DependencyNode[], level = 0): FlatDep[] {
     const result: FlatDep[] = [];

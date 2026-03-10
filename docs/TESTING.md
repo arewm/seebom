@@ -1,6 +1,6 @@
 # SeeBOM – Testing Guide
 
-> **Updated:** 2026-03-09
+> **Updated:** 2026-03-10
 
 ## Quick Start
 
@@ -38,6 +38,11 @@ backend/internal/
 ├── config/
 │   ├── config.go
 │   └── config_test.go          ← tests for config.Load()
+├── github/
+│   ├── purl.go
+│   ├── purl_test.go            ← tests for ExtractGitHubRepo (11 PURL patterns)
+│   ├── resolver.go
+│   └── resolver_test.go        ← tests for Resolve, ResolveWithMetadata, cache (httptest mock)
 ├── license/
 │   ├── checker.go
 │   ├── checker_test.go         ← tests for Categorize, Check, LoadPolicy, etc.
@@ -45,6 +50,9 @@ backend/internal/
 ├── osv/
 │   ├── client.go
 │   └── client_test.go          ← tests for QueryBatch (with httptest mock)
+├── osvutil/
+│   ├── osvutil.go
+│   └── osvutil_test.go         ← tests for ClassifySeverity, ParseCVSSScore, ExtractFixedVersion, ExtractAffectedVersions
 ├── repo/
 │   ├── scanner.go
 │   └── scanner_test.go         ← tests for Scan (with t.TempDir())
@@ -70,12 +78,15 @@ These packages contain only data types (structs) with no logic:
 | Package | Tests | What's Covered |
 |---------|-------|---------------|
 | `config` | 2 | Default values, custom env vars |
+| `github/purl` | 11 | ExtractGitHubRepo: golang github.com, subpath, pkg:github scheme, non-github, npm, empty, qualifiers, fragments, missing repo, azure submodule, hamba v2 |
+| `github/resolver` | 8 | Resolve (happy path, cache hit, non-GitHub PURL, 404), ResolveWithMetadata (archived repo, license extraction), PreloadCache, CacheEntries |
 | `license` | 11 | Categorize (10 SPDX IDs), Check, CheckWithExceptions (blanket + package), LoadPolicy, LoadExceptions, BuildIndex, edge cases |
 | `osv` | 5 | Empty input, mock server, server error, context cancellation, no-vulns response |
+| `osvutil` | 21+ | ClassifySeverity (10 CVSS scenarios), ParseCVSSScore (5 inputs), ExtractFixedVersion (4 scenarios), ExtractAffectedVersions (3 scenarios) |
 | `repo` | 5 | File scanning (SBOM + VEX detection), empty dir, nested dirs, SHA256 consistency, nonexistent dir |
 | `spdx` | 5 | Full parse, invalid JSON, empty packages, deterministic SBOM ID, license fallback |
 | `vex` | 5 (+8 subtests) | Full parse, invalid JSON, empty doc, normalizeVulnID (8 URL patterns), URL-based vuln @id |
-| **Total** | **33+ tests** | |
+| **Total** | **73+ tests** | |
 
 ---
 

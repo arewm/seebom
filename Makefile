@@ -4,6 +4,7 @@
 .PHONY: ui-build ui-dev
 .PHONY: ingest worker api
 .PHONY: images images-push
+.PHONY: sync-labels
 
 SHELL := /bin/bash
 REGISTRY ?= ghcr.io
@@ -31,10 +32,28 @@ dev-down: ## docker compose down
 dev-restart: ## Restart with new .env values (keeps data)
 	docker compose up -d --force-recreate
 
+migrate: ## Run all pending database migrations
+	@echo "⏳ Running migrations..."
+	@for f in db/migrations/*.sql; do \
+		echo "  → $$f"; \
+		docker compose exec -T clickhouse clickhouse-client --database=seebom --multiquery < "$$f" 2>/dev/null || true; \
+	done
+	@echo "✅ Migrations complete."
+
+cve-refresh: migrate ## Run a CVE refresh (check all PURLs for new vulnerabilities)
+	@echo "🔍 Starting CVE refresh..."
+	@docker compose --profile cve-refresh up --build --force-recreate cve-refresher
+	@echo "✅ CVE refresh complete."
+
 re-ingest: ## Re-trigger the Ingestion Watcher (scans for new files)
 	docker compose up --force-recreate ingestion-watcher
 
 re-scan: ## Reset all data + queue, then re-ingest (e.g. after enabling OSV)
+	@echo "⏳ Running pending migrations..."
+	@for f in db/migrations/*.sql; do \
+		echo "  → $$f"; \
+		docker compose exec -T clickhouse clickhouse-client --database=seebom --multiquery < "$$f" 2>/dev/null || true; \
+	done
 	@echo "🗑️  Clearing all data tables and queue..."
 	@docker compose exec -T clickhouse clickhouse-client --database=seebom \
 		--query "TRUNCATE TABLE ingestion_queue"
@@ -46,6 +65,10 @@ re-scan: ## Reset all data + queue, then re-ingest (e.g. after enabling OSV)
 		--query "TRUNCATE TABLE sbom_packages"
 	@docker compose exec -T clickhouse clickhouse-client --database=seebom \
 		--query "TRUNCATE TABLE sboms"
+	@docker compose exec -T clickhouse clickhouse-client --database=seebom \
+		--query "TRUNCATE TABLE vex_statements" 2>/dev/null || true
+	@echo "♻️  Rebuilding services with latest code..."
+	@docker compose up --build -d api-gateway parsing-worker
 	@echo "♻️  Re-triggering ingestion..."
 	@docker compose up --force-recreate ingestion-watcher
 	@echo "✅ Full re-scan started. Workers will process all SBOMs from scratch."
@@ -133,3 +156,7 @@ images-push: images ## Build and push all images to GHCR (TAG=dev)
 
 ui-build: ## Build Angular for production
 	cd ui && npx ng build --configuration=production
+
+# ─── GitHub ──────────────────────────────────────────────────────────────────
+sync-labels: ## Sync GitHub labels from .github/labels.yml (requires gh + yq)
+	.github/scripts/sync-labels.sh

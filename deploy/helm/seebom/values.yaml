@@ -105,3 +105,15 @@ ui:
   customTheme:
     enabled: false
 
+# CVE Refresher (CronJob) – checks all known PURLs for newly disclosed CVEs.
+cveRefresher:
+  enabled: true
+  schedule: "0 2 * * *"    # Daily at 2 AM
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+

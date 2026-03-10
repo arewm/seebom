@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"os"
 	"os/signal"
@@ -14,8 +13,10 @@ import (
 
 	"github.com/seebom-labs/seebom/backend/internal/clickhouse"
 	"github.com/seebom-labs/seebom/backend/internal/config"
+	gh "github.com/seebom-labs/seebom/backend/internal/github"
 	"github.com/seebom-labs/seebom/backend/internal/license"
 	"github.com/seebom-labs/seebom/backend/internal/osv"
+	"github.com/seebom-labs/seebom/backend/internal/osvutil"
 	"github.com/seebom-labs/seebom/backend/internal/spdx"
 	"github.com/seebom-labs/seebom/backend/internal/vex"
 	"github.com/seebom-labs/seebom/backend/pkg/models"
@@ -52,6 +53,29 @@ func main() {
 			cfg.ExceptionsFile, len(idx.Raw.BlanketExceptions), len(idx.Raw.Exceptions))
 	} else {
 		log.Printf("No license exceptions loaded (tried %s): %v", cfg.ExceptionsFile, err)
+	}
+
+	// Initialize GitHub license resolver for unknown licenses.
+	var ghResolver *gh.Resolver
+	if !cfg.SkipGitHubResolve {
+		ghResolver = gh.NewResolver(cfg.GitHubToken)
+		// Preload license cache from ClickHouse.
+		if cached, err := chClient.QueryGitHubLicenseCache(context.Background()); err == nil && len(cached) > 0 {
+			ghResolver.PreloadCache(cached)
+			log.Printf("Preloaded %d GitHub license cache entries", len(cached))
+		}
+		// Preload repo metadata cache.
+		if meta, err := chClient.QueryGitHubRepoMetadata(context.Background()); err == nil && len(meta) > 0 {
+			ghResolver.PreloadMetadataCache(meta)
+			log.Printf("Preloaded %d GitHub repo metadata entries", len(meta))
+		}
+		if cfg.GitHubToken != "" {
+			log.Println("GitHub license resolver enabled (authenticated, 5000 req/h)")
+		} else {
+			log.Println("GitHub license resolver enabled (unauthenticated, 60 req/h)")
+		}
+	} else {
+		log.Println("GitHub license resolver disabled (SKIP_GITHUB_RESOLVE=true)")
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -93,7 +117,7 @@ func main() {
 		log.Printf("Claimed %d jobs, processing...", len(jobs))
 
 		for _, job := range jobs {
-			if err := processJob(ctx, cfg, chClient, osvClient, exceptionsIndex, job); err != nil {
+			if err := processJob(ctx, cfg, chClient, osvClient, exceptionsIndex, ghResolver, job); err != nil {
 				log.Printf("ERROR: Failed to process %s: %v", job.SourceFile, err)
 				if failErr := chClient.FailJob(ctx, job, err.Error()); failErr != nil {
 					log.Printf("ERROR: Failed to mark job as failed: %v", failErr)
@@ -110,7 +134,7 @@ func main() {
 	}
 }
 
-func processJob(ctx context.Context, cfg *config.Config, chClient *clickhouse.Client, osvClient *osv.Client, exceptions *license.ExceptionIndex, job models.IngestionJob) error {
+func processJob(ctx context.Context, cfg *config.Config, chClient *clickhouse.Client, osvClient *osv.Client, exceptions *license.ExceptionIndex, ghResolver *gh.Resolver, job models.IngestionJob) error {
 	absPath := filepath.Join(cfg.SBOMDir, job.SourceFile)
 
 	// Branch on job type.
@@ -118,7 +142,7 @@ func processJob(ctx context.Context, cfg *config.Config, chClient *clickhouse.Cl
 		return processVEXJob(ctx, chClient, absPath, job)
 	}
 
-	return processSBOMJob(ctx, cfg, chClient, osvClient, exceptions, absPath, job)
+	return processSBOMJob(ctx, cfg, chClient, osvClient, exceptions, ghResolver, absPath, job)
 }
 
 func processVEXJob(ctx context.Context, chClient *clickhouse.Client, absPath string, job models.IngestionJob) error {
@@ -145,7 +169,7 @@ func processVEXJob(ctx context.Context, chClient *clickhouse.Client, absPath str
 	return nil
 }
 
-func processSBOMJob(ctx context.Context, cfg *config.Config, chClient *clickhouse.Client, osvClient *osv.Client, exceptions *license.ExceptionIndex, absPath string, job models.IngestionJob) error {
+func processSBOMJob(ctx context.Context, cfg *config.Config, chClient *clickhouse.Client, osvClient *osv.Client, exceptions *license.ExceptionIndex, ghResolver *gh.Resolver, absPath string, job models.IngestionJob) error {
 
 	// 1. Parse the SPDX file.
 	result, err := spdx.ParseFile(absPath, job.SourceFile, job.SHA256Hash)
@@ -212,9 +236,9 @@ func processSBOMJob(ctx context.Context, cfg *config.Config, chClient *clickhous
 					}
 					purl := chunk[j]
 					for _, v := range qr.Vulns {
-						severity := classifySeverity(v)
-						fixedVersion := extractFixedVersion(v)
-						affectedVersions := extractAffectedVersions(v)
+						severity := osvutil.ClassifySeverity(v)
+						fixedVersion := osvutil.ExtractFixedVersion(v)
+						affectedVersions := osvutil.ExtractAffectedVersions(v)
 
 						// Serialize raw OSV JSON for detail view.
 						rawJSON, _ := json.Marshal(v)
@@ -244,6 +268,47 @@ func processSBOMJob(ctx context.Context, cfg *config.Config, chClient *clickhous
 		}
 	}
 
+	// 4b. Resolve unknown licenses via GitHub API + check for archived repos.
+	if ghResolver != nil {
+		resolved := 0
+		archived := 0
+		for i, lic := range result.Packages.PackageLicenses {
+			purl := ""
+			if i < len(result.Packages.PackagePURLs) {
+				purl = result.Packages.PackagePURLs[i]
+			}
+			if purl == "" {
+				continue
+			}
+
+			// For unknown licenses, fetch full metadata (license + archived status)
+			if lic == "" || lic == "NOASSERTION" || lic == "NONE" {
+				if meta := ghResolver.ResolveWithMetadata(ctx, purl); meta != nil {
+					if meta.SPDXID != "" {
+						result.Packages.PackageLicenses[i] = meta.SPDXID
+						resolved++
+					}
+					if meta.Archived {
+						archived++
+					}
+				}
+			}
+		}
+		if resolved > 0 {
+			log.Printf("  Resolved %d unknown licenses via GitHub API", resolved)
+		}
+		if archived > 0 {
+			log.Printf("  ⚠️  Found %d packages using ARCHIVED GitHub repos", archived)
+		}
+		// Persist caches to ClickHouse.
+		if entries := ghResolver.CacheEntries(); len(entries) > 0 {
+			_ = chClient.InsertGitHubLicenseCache(ctx, entries)
+		}
+		if metaEntries := ghResolver.MetadataCacheEntries(); len(metaEntries) > 0 {
+			_ = chClient.InsertGitHubRepoMetadata(ctx, metaEntries)
+		}
+	}
+
 	// 5. License compliance check.
 	licResults := license.CheckWithExceptions(result.Packages.PackageNames, result.Packages.PackageLicenses, exceptions)
 	if len(licResults) > 0 {
@@ -253,6 +318,10 @@ func processSBOMJob(ctx context.Context, cfg *config.Config, chClient *clickhous
 			if nonCompliant == nil {
 				nonCompliant = []string{}
 			}
+			exempted := lr.ExemptedPackages
+			if exempted == nil {
+				exempted = []string{}
+			}
 			licModels[i] = models.LicenseCompliance{
 				CheckedAt:            time.Now(),
 				SBOMID:               result.SBOM.SBOMID,
@@ -261,6 +330,8 @@ func processSBOMJob(ctx context.Context, cfg *config.Config, chClient *clickhous
 				Category:             string(lr.Category),
 				PackageCount:         lr.PackageCount,
 				NonCompliantPackages: nonCompliant,
+				ExemptedPackages:     exempted,
+				ExemptionReason:      lr.ExemptionReason,
 			}
 		}
 		if err := chClient.InsertLicenseCompliance(ctx, licModels); err != nil {
@@ -269,70 +340,4 @@ func processSBOMJob(ctx context.Context, cfg *config.Config, chClient *clickhous
 	}
 
 	return nil
-}
-
-// classifySeverity maps OSV severity data to a simple category.
-func classifySeverity(v osv.VulnEntry) string {
-	for _, s := range v.Severity {
-		if s.Type == "CVSS_V3" {
-			// Parse CVSS score string to determine severity.
-			// CVSS scores: 0.0 = none, 0.1-3.9 = low, 4.0-6.9 = medium, 7.0-8.9 = high, 9.0-10.0 = critical
-			score := parseCVSSScore(s.Score)
-			switch {
-			case score >= 9.0:
-				return "CRITICAL"
-			case score >= 7.0:
-				return "HIGH"
-			case score >= 4.0:
-				return "MEDIUM"
-			default:
-				return "LOW"
-			}
-		}
-	}
-	// If no CVSS score, check if any severity info exists.
-	if len(v.Severity) > 0 {
-		return "MEDIUM" // Default when severity exists but no CVSS_V3
-	}
-	return "LOW" // Default when no severity info at all
-}
-
-// parseCVSSScore extracts a numeric score from a CVSS vector string or numeric string.
-func parseCVSSScore(score string) float64 {
-	// Try to parse as a simple float first (e.g., "7.5").
-	var f float64
-	_, err := fmt.Sscanf(score, "%f", &f)
-	if err == nil {
-		return f
-	}
-
-	// Try to extract score from a CVSS vector string (e.g., "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H").
-	// We'd need full CVSS parsing for precision; for now, default to medium.
-	return 5.0
-}
-
-// extractFixedVersion finds the first "fixed" version from OSV affected data.
-func extractFixedVersion(v osv.VulnEntry) string {
-	for _, a := range v.Affected {
-		for _, r := range a.Ranges {
-			for _, e := range r.Events {
-				if e.Fixed != "" {
-					return e.Fixed
-				}
-			}
-		}
-	}
-	return ""
-}
-
-// extractAffectedVersions collects all explicitly listed affected versions.
-func extractAffectedVersions(v osv.VulnEntry) []string {
-	var versions []string
-	for _, a := range v.Affected {
-		versions = append(versions, a.Versions...)
-	}
-	if versions == nil {
-		versions = []string{}
-	}
-	return versions
 }

@@ -83,6 +83,8 @@ services:
       SBOM_DIR: /data/sboms
       WORKER_BATCH_SIZE: ${WORKER_BATCH_SIZE:-50}
       SKIP_OSV: ${SKIP_OSV:-false}
+      SKIP_GITHUB_RESOLVE: ${SKIP_GITHUB_RESOLVE:-false}
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
       EXCEPTIONS_FILE: /data/config/license-exceptions.json
       LICENSE_POLICY_FILE: /data/config/license-policy.json
     volumes:
@@ -103,6 +105,22 @@ services:
       - ${CUSTOM_THEME:-./ui/src/assets/custom-theme.example.css}:/usr/share/nginx/html/custom-theme.css:ro
     depends_on:
       - api-gateway
+
+  cve-refresher:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: cve-refresher
+    profiles: ["cve-refresh"]
+    environment:
+      CLICKHOUSE_HOST: clickhouse
+      CLICKHOUSE_PORT: "9000"
+      CLICKHOUSE_DATABASE: seebom
+      CLICKHOUSE_USER: default
+      CLICKHOUSE_PASSWORD: ""
+    depends_on:
+      clickhouse:
+        condition: service_healthy
 
 volumes:
   clickhouse_data:

@@ -58,6 +58,8 @@ type LicenseCompliance struct {
 	Category             string    `json:"category"` // permissive, copyleft, unknown
 	PackageCount         uint32    `json:"package_count"`
 	NonCompliantPackages []string  `json:"non_compliant_packages"`
+	ExemptedPackages     []string  `json:"exempted_packages"`
+	ExemptionReason      string    `json:"exemption_reason"`
 }
 
 // IngestionJob represents a job in the ClickHouse-based queue.

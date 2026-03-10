@@ -56,6 +56,8 @@ cp .env.example .env
 | `WORKER_REPLICAS` | `1` | Number of parallel parsing worker containers |
 | `WORKER_BATCH_SIZE` | `50` | Jobs claimed per polling cycle per worker |
 | `SKIP_OSV` | `false` | Skip OSV vulnerability API calls. Set `true` for fast initial bulk load (licenses only), then re-run with `false`. |
+| `SKIP_GITHUB_RESOLVE` | `false` | Skip GitHub license resolution for packages with `NOASSERTION`/empty licenses. |
+| `GITHUB_TOKEN` | *(empty)* | GitHub personal access token for license resolution. Increases rate limit from 60 to 5000 req/h. No scopes needed. |
 
 **After changing `.env`:**
 
@@ -172,26 +174,34 @@ sboms/*.spdx.json + *.openvex.json
              ▼
 ┌─────────────────────────┐
 │   Parsing Workers (N)   │  Stateless: claims jobs, parses SPDX/VEX,
-│   (Go binary)           │  queries OSV for vulns, checks licenses,
+│   (Go binary)           │  queries OSV for vulns, resolves unknown licenses
+│                         │  via GitHub API, checks license compliance,
 │                         │  batch-INSERTs into ClickHouse
 └────────────┬────────────┘
              │
              ▼
 ┌─────────────────────────┐
-│   ClickHouse            │  7 tables: sboms, sbom_packages, vulnerabilities,
-│                         │  license_compliance, vex_statements, ingestion_queue,
-│                         │  dashboard_stats_mv
+│   CVE Refresher         │  CronJob (daily): checks all PURLs for new CVEs
+│   (Go binary)           │  without re-scanning all SBOMs
 └────────────┬────────────┘
              │
              ▼
 ┌─────────────────────────┐
-│   API Gateway           │  16 REST endpoints, stateless
+│   ClickHouse            │  11 tables: sboms, sbom_packages, vulnerabilities,
+│                         │  license_compliance, vex_statements, ingestion_queue,
+│                         │  dashboard_stats_mv, cve_refresh_log, github_license_cache,
+│                         │  github_repo_metadata
+└────────────┬────────────┘
+             │
+             ▼
+┌─────────────────────────┐
+│   API Gateway           │  17 REST endpoints, stateless
 │   (Go binary)           │
 └────────────┬────────────┘
              │
              ▼
 ┌─────────────────────────┐
-│   Angular UI            │  9 lazy-loaded pages, virtual scrolling,
+│   Angular UI            │  10 lazy-loaded pages, virtual scrolling,
 │                         │  OnPush change detection, dark mode,
 │                         │  CSS custom properties theming
 └─────────────────────────┘
@@ -215,6 +225,8 @@ See [docs/TESTING.md](docs/TESTING.md) for writing and running tests.
 | `make dev-reset` | Destroy data volumes and restart fresh |
 | `make re-ingest` | Re-trigger the Ingestion Watcher (scans for new files) |
 | `make re-scan` | Wipe all data and re-process everything (e.g. after enabling OSV) |
+| `make cve-refresh` | Check all known PURLs for new CVEs (without re-scanning SBOMs) |
+| `make migrate` | Run all pending database migrations |
 | `make ch-only` | Start only ClickHouse (for local dev) |
 | `make ch-migrate` | Run SQL migrations against ClickHouse |
 | `make ch-shell` | Open ClickHouse CLI |
@@ -248,6 +260,7 @@ See [docs/TESTING.md](docs/TESTING.md) for writing and running tests.
 | GET | `/api/v1/license-exceptions` | Active license exceptions (read-only, from config file) |
 | GET | `/api/v1/license-policy` | Active license classification policy (permissive/copyleft lists) |
 | GET | `/api/v1/vex/statements?page=&page_size=` | Paginated VEX statements |
+| GET | `/api/v1/packages/archived` | Packages using archived GitHub repos (no longer maintained) |
 
 ---
 

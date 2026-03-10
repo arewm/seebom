@@ -12,7 +12,11 @@ type DashboardStats struct {
 	MediumVulns              uint64            `json:"medium_vulns"`
 	LowVulns                 uint64            `json:"low_vulns"`
 	LicenseBreakdown         map[string]uint64 `json:"license_breakdown"`
+	ExemptedPackages         uint64            `json:"exempted_packages"`
 	TotalVEXStatements       uint64            `json:"total_vex_statements"`
+	LastCVERefresh           string            `json:"last_cve_refresh,omitempty"`
+	NewVulnsSinceRefresh     uint64            `json:"new_vulns_since_refresh"`
+	ArchivedReposCount       uint64            `json:"archived_repos_count"`
 }
 
 // SBOMListItem is the response DTO for listing SBOMs.
@@ -62,7 +66,10 @@ type LicenseComplianceItem struct {
 	LicenseID            string                `json:"license_id"`
 	Category             string                `json:"category"`
 	PackageCount         uint64                `json:"package_count"`
+	SBOMCount            int                   `json:"sbom_count"`
 	NonCompliantPackages []string              `json:"non_compliant_packages,omitempty"`
+	ExemptedPackages     []string              `json:"exempted_packages,omitempty"`
+	ExemptionReason      string                `json:"exemption_reason,omitempty"`
 	AffectedSBOMs        []LicenseAffectedSBOM `json:"affected_sboms,omitempty"`
 }
 
@@ -111,10 +118,12 @@ type SBOMDetail struct {
 
 // SBOMLicenseBreakdownItem is a per-SBOM license summary.
 type SBOMLicenseBreakdownItem struct {
-	LicenseID    string   `json:"license_id"`
-	Category     string   `json:"category"`
-	PackageCount uint32   `json:"package_count"`
-	Packages     []string `json:"packages"`
+	LicenseID        string   `json:"license_id"`
+	Category         string   `json:"category"`
+	PackageCount     uint32   `json:"package_count"`
+	Packages         []string `json:"packages"`
+	ExemptedPackages []string `json:"exempted_packages,omitempty"`
+	ExemptionReason  string   `json:"exemption_reason,omitempty"`
 }
 
 // ProjectLicenseViolation represents a project that has license compliance issues.

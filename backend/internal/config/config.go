@@ -27,9 +27,11 @@ type Config struct {
 
 	// Feature flags
 	SkipOSV           bool   // Skip OSV vulnerability lookups (fast ingestion, licenses only)
+	SkipGitHubResolve bool   // Skip GitHub license resolution for unknown licenses
 	SBOMLimit         int    // Max number of SBOMs to enqueue (0 = unlimited)
 	ExceptionsFile    string // Path to license-exceptions.json
 	LicensePolicyFile string // Path to license-policy.json
+	GitHubToken       string // GitHub personal access token (optional, increases rate limit)
 }
 
 // Load reads configuration from environment variables with sensible defaults.
@@ -45,9 +47,11 @@ func Load() (*Config, error) {
 		WorkerID:           getEnv("WORKER_ID", ""),
 		WorkerBatchSize:    getEnvInt("WORKER_BATCH_SIZE", 10),
 		SkipOSV:            getEnvBool("SKIP_OSV", false),
+		SkipGitHubResolve:  getEnvBool("SKIP_GITHUB_RESOLVE", false),
 		SBOMLimit:          getEnvInt("SBOM_LIMIT", 0),
 		ExceptionsFile:     getEnv("EXCEPTIONS_FILE", "/data/config/license-exceptions.json"),
 		LicensePolicyFile:  getEnv("LICENSE_POLICY_FILE", "/data/config/license-policy.json"),
+		GitHubToken:        getEnv("GITHUB_TOKEN", ""),
 	}
 
 	if cfg.WorkerID == "" {

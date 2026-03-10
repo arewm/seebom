@@ -12,10 +12,11 @@ RUN go mod download
 
 COPY . .
 
-# Build all three binaries.
+# Build all binaries.
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /bin/ingestion-watcher ./cmd/ingestion-watcher/
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /bin/parsing-worker    ./cmd/parsing-worker/
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /bin/api-gateway       ./cmd/api-gateway/
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /bin/cve-refresher     ./cmd/cve-refresher/
 
 # ---- Ingestion Watcher ----
 FROM alpine:3.21 AS ingestion-watcher
@@ -38,4 +39,11 @@ COPY --from=builder /bin/api-gateway /usr/local/bin/api-gateway
 USER nobody:nobody
 EXPOSE 8080
 ENTRYPOINT ["api-gateway"]
+
+# ---- CVE Refresher ----
+FROM alpine:3.21 AS cve-refresher
+RUN apk add --no-cache ca-certificates tzdata
+COPY --from=builder /bin/cve-refresher /usr/local/bin/cve-refresher
+USER nobody:nobody
+ENTRYPOINT ["cve-refresher"]
 

@@ -52,7 +52,8 @@ func (c *Client) QuerySBOMVulnerabilities(ctx context.Context, sbomID string) ([
 // QuerySBOMLicenses fetches the license breakdown for a specific SBOM.
 func (c *Client) QuerySBOMLicenses(ctx context.Context, sbomID string) ([]dto.SBOMLicenseBreakdownItem, error) {
 	rows, err := c.Conn.Query(ctx, `
-		SELECT license_id, category, package_count, non_compliant_packages
+		SELECT license_id, category, package_count, non_compliant_packages,
+		       exempted_packages, exemption_reason
 		FROM license_compliance FINAL
 		WHERE sbom_id = ?
 		ORDER BY package_count DESC
@@ -65,8 +66,14 @@ func (c *Client) QuerySBOMLicenses(ctx context.Context, sbomID string) ([]dto.SB
 	var items []dto.SBOMLicenseBreakdownItem
 	for rows.Next() {
 		var item dto.SBOMLicenseBreakdownItem
-		if err := rows.Scan(&item.LicenseID, &item.Category, &item.PackageCount, &item.Packages); err != nil {
+		var exempted []string
+		var reason string
+		if err := rows.Scan(&item.LicenseID, &item.Category, &item.PackageCount, &item.Packages, &exempted, &reason); err != nil {
 			return nil, fmt.Errorf("failed to scan license row: %w", err)
+		}
+		if len(exempted) > 0 {
+			item.ExemptedPackages = exempted
+			item.ExemptionReason = reason
 		}
 		items = append(items, item)
 	}

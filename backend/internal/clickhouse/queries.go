@@ -72,6 +72,17 @@ func (c *Client) QueryDashboardStats(ctx context.Context) (*dto.DashboardStats, 
 		stats.LicenseBreakdown[category] = cnt
 	}
 
+	// Count exempted packages (packages covered by blanket or per-package exceptions).
+	_ = c.Conn.QueryRow(ctx,
+		"SELECT sum(length(exempted_packages)) FROM license_compliance FINAL").Scan(&stats.ExemptedPackages)
+
+	// Subtract exempted from copyleft so the dashboard shows the real violation count.
+	if stats.LicenseBreakdown["copyleft"] > stats.ExemptedPackages {
+		stats.LicenseBreakdown["copyleft"] -= stats.ExemptedPackages
+	} else {
+		stats.LicenseBreakdown["copyleft"] = 0
+	}
+
 	// VEX: count suppressed vulnerabilities (not_affected) and total statements.
 	_ = c.Conn.QueryRow(ctx,
 		"SELECT count() FROM vex_statements FINAL").Scan(&stats.TotalVEXStatements)
@@ -94,6 +105,24 @@ func (c *Client) QueryDashboardStats(ctx context.Context) (*dto.DashboardStats, 
 	} else {
 		stats.EffectiveVulnerabilities = stats.TotalVulnerabilities
 	}
+
+	// Last CVE refresh info.
+	lastRefresh, err := c.QueryLastRefreshTime(ctx)
+	if err == nil && !lastRefresh.IsZero() {
+		stats.LastCVERefresh = lastRefresh.Format(time.RFC3339)
+		// Count vulns found in the most recent refresh.
+		_ = c.Conn.QueryRow(ctx, `
+			SELECT ifNull(new_vulns_found, 0)
+			FROM cve_refresh_log FINAL
+			WHERE status = 'completed'
+			ORDER BY finished_at DESC
+			LIMIT 1
+		`).Scan(&stats.NewVulnsSinceRefresh)
+	}
+
+	// Archived repos count.
+	_ = c.Conn.QueryRow(ctx,
+		"SELECT count() FROM github_repo_metadata FINAL WHERE archived = true").Scan(&stats.ArchivedReposCount)
 
 	return stats, nil
 }
@@ -172,16 +201,26 @@ func (c *Client) QueryVulnerabilities(ctx context.Context, page, pageSize uint64
 	offset := (page - 1) * pageSize
 
 	// Build WHERE clause for VEX filtering.
-	vexWhere := ""
+	// When vex_filter=effective, exclude vulns that have a VEX "not_affected" status.
+	vexHaving := ""
 	if vexFilter == "effective" {
-		vexWhere = `WHERE NOT EXISTS (
-			SELECT 1 FROM (SELECT * FROM vex_statements FINAL) AS vx
-			WHERE vx.vuln_id = v.vuln_id AND vx.product_purl = v.purl AND vx.status = 'not_affected'
-		)`
+		vexHaving = `WHERE (vx.status IS NULL OR vx.status != 'not_affected')`
 	}
 
 	var total uint64
-	countQuery := fmt.Sprintf("SELECT count() FROM (SELECT * FROM vulnerabilities FINAL) AS v %s", vexWhere)
+	countQuery := fmt.Sprintf(`
+		SELECT count() FROM (
+			SELECT
+				v.vuln_id,
+				v.purl
+			FROM (SELECT * FROM vulnerabilities FINAL) AS v
+			LEFT JOIN (
+				SELECT vuln_id, product_purl, status
+				FROM vex_statements FINAL
+			) AS vx ON vx.vuln_id = v.vuln_id AND vx.product_purl = v.purl
+			%s
+		)
+	`, vexHaving)
 	if err := c.Conn.QueryRow(ctx, countQuery).Scan(&total); err != nil {
 		return nil, fmt.Errorf("failed to count vulnerabilities: %w", err)
 	}
@@ -199,7 +238,7 @@ func (c *Client) QueryVulnerabilities(ctx context.Context, page, pageSize uint64
 		%s
 		ORDER BY v.severity ASC, v.discovered_at DESC
 		LIMIT ? OFFSET ?
-	`, vexWhere)
+	`, vexHaving)
 
 	rows, err := c.Conn.Query(ctx, query, pageSize, offset)
 	if err != nil {
@@ -241,7 +280,10 @@ func (c *Client) QueryLicenseCompliance(ctx context.Context) ([]dto.LicenseCompl
 			lc.license_id,
 			lc.category,
 			sum(lc.package_count) AS total_packages,
-			groupArrayArray(lc.non_compliant_packages) AS all_non_compliant,
+			arrayDistinct(groupArrayArray(lc.non_compliant_packages)) AS all_non_compliant,
+			arrayDistinct(groupArrayArray(lc.exempted_packages)) AS all_exempted,
+			any(lc.exemption_reason) AS exemption_reason,
+			count(DISTINCT lc.sbom_id) AS sbom_count,
 			groupArray(DISTINCT toString(lc.sbom_id)) AS sbom_ids,
 			groupArray(DISTINCT ifNull(s.document_name, lc.source_file)) AS sbom_names
 		FROM (SELECT * FROM license_compliance FINAL) AS lc
@@ -258,13 +300,21 @@ func (c *Client) QueryLicenseCompliance(ctx context.Context) ([]dto.LicenseCompl
 	for rows.Next() {
 		var item dto.LicenseComplianceItem
 		var nonCompliant []string
+		var exempted []string
+		var exemptionReason string
+		var sbomCount uint64
 		var sbomIDs []string
 		var sbomNames []string
-		if err := rows.Scan(&item.LicenseID, &item.Category, &item.PackageCount, &nonCompliant, &sbomIDs, &sbomNames); err != nil {
+		if err := rows.Scan(&item.LicenseID, &item.Category, &item.PackageCount, &nonCompliant, &exempted, &exemptionReason, &sbomCount, &sbomIDs, &sbomNames); err != nil {
 			return nil, fmt.Errorf("failed to scan license row: %w", err)
 		}
+		item.SBOMCount = int(sbomCount)
 		if len(nonCompliant) > 0 {
 			item.NonCompliantPackages = nonCompliant
+		}
+		if len(exempted) > 0 {
+			item.ExemptedPackages = exempted
+			item.ExemptionReason = exemptionReason
 		}
 		for i, id := range sbomIDs {
 			name := ""

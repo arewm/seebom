@@ -107,9 +107,17 @@ func (idx *ExceptionIndex) IsExempt(packageName, licenseID string) (exempt bool,
 		return false, ""
 	}
 
-	// 1. Check blanket license exceptions.
+	// 1. Check blanket license exceptions (exact match first).
 	if be, ok := idx.blanketLicenses[licenseID]; ok {
 		return true, fmt.Sprintf("Blanket exception: %s – %s", be.ID, be.Comment)
+	}
+
+	// 1b. Check blanket license exceptions (prefix match for SPDX modifiers).
+	// e.g. "MPL-2.0-no-copyleft-exception" should match blanket "MPL-2.0".
+	for baseLicense, be := range idx.blanketLicenses {
+		if strings.HasPrefix(licenseID, baseLicense+"-") {
+			return true, fmt.Sprintf("Blanket exception: %s (via %s) – %s", be.ID, baseLicense, be.Comment)
+		}
 	}
 
 	// 2. Check specific package+license.
