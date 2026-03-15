@@ -6,6 +6,7 @@
 .PHONY: images images-push
 .PHONY: sync-labels
 .PHONY: kind-up kind-down kind-reingest kind-build kind-deploy kind-stop kind-start kind-status
+.PHONY: docs-serve docs-build docs-deps
 
 SHELL := /bin/bash
 REGISTRY ?= ghcr.io
@@ -224,3 +225,12 @@ kind-deploy: kind-build ## Build images, load into Kind, and upgrade Helm releas
 	@kubectl rollout restart deployment/seebom-api-gateway deployment/seebom-parsing-worker -n seebom
 	@echo "✅ Deployed. Pods restarting with new images."
 
+# ─── Documentation (Hugo + Docsy) ────────────────────────────────────────────
+docs-deps: ## Install Hugo docs dependencies (npm + Go modules)
+	cd docs && npm install && hugo mod get
+
+docs-serve: ## Start Hugo dev server with live reload (http://localhost:1313)
+	cd docs && hugo server --buildDrafts --buildFuture
+
+docs-build: ## Build Hugo documentation site (output in docs/public/)
+	cd docs && hugo --minify
