@@ -1,6 +1,8 @@
-# 🔍 SeeBOM Labs
+<p align="center">
+  <img src="docs/static/images/logo-with-text.png" alt="SeeBOM" height="100">
+</p>
 
-**Kubernetes-native Software Bill of Materials (SBOM) Visualization & Governance Platform**
+<h3 align="center">Kubernetes-native Software Bill of Materials (SBOM) Visualization & Governance Platform</h3>
 
 Ingest 1000+ SPDX SBOMs, scan for vulnerabilities via OSV, enforce license compliance, and apply VEX statements — all visualized in a fast Angular dashboard backed by ClickHouse analytics.
 

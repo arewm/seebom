@@ -8,7 +8,7 @@ description: >
 ---
 
 {{% pageinfo %}}
-This page contains the full architecture blueprint for SeeBOM Labs.
+This page contains the full architecture blueprint for SeeBOM.
 {{% /pageinfo %}}
 
 ## TL;DR

@@ -1,9 +1,10 @@
 ---
-title: "SeeBOM Labs"
-linkTitle: "SeeBOM Labs"
+title: "SeeBOM"
+linkTitle: "SeeBOM"
 ---
 
-{{< blocks/cover title="SeeBOM Labs" image_anchor="top" height="med" color="dark" >}}
+{{< blocks/cover title="" image_anchor="top" height="med" color="dark" >}}
+<img src="/images/logo-with-text.svg" alt="SeeBOM" style="max-width: 420px; width: 100%; margin-bottom: 1rem;">
 <p class="lead mt-4">Kubernetes-native Software Bill of Materials (SBOM) Visualization &amp; Governance Platform</p>
 <a class="btn btn-lg btn-seebom me-3 mb-4" href="/docs/">
   <img class="fb-icon" src="/images/flowbite/book-open.svg" alt="" loading="lazy">

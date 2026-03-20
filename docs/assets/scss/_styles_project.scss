@@ -136,7 +136,7 @@ pre code {
 
 /* ── Buttons matching seebom-website gradient ───────────────── */
 .btn-seebom {
-  color: #fff;
+  color: #fff !important;
   background: linear-gradient(120deg, #1A8A8A 0%, #E8871E 100%);
   box-shadow: 0 0 0 1px rgba(232, 135, 30, 0.22);
   border: none;
@@ -145,8 +145,21 @@ pre code {
 }
 
 .btn-seebom:hover {
-  color: #fff;
+  color: #fff !important;
   background: #147272;
+}
+
+.btn-seebom .fb-icon {
+  filter: brightness(0) invert(1);
+}
+
+/* Secondary button on cover also needs white text */
+.td-cover-block .btn-secondary {
+  color: #fff !important;
+}
+
+.td-cover-block .btn-secondary .fb-icon {
+  filter: brightness(0) invert(1);
 }
 
 /* ── Cover block (homepage) ─────────────────────────────────── */
@@ -154,8 +167,34 @@ pre code {
   background: radial-gradient(circle at top, #1b1b27 0%, var(--sb-bg) 45%) !important;
 }
 
+.td-cover-block .lead {
+  color: #e0e0e6 !important;
+}
+
 /* ── Footer ─────────────────────────────────────────────────── */
 [data-bs-theme="dark"] .td-footer {
   background: var(--sb-surface);
   border-top: 1px solid var(--sb-border);
 }
+
+.td-footer {
+  padding: 1.5rem 0;
+}
+
+.td-footer .footer-copyright {
+  text-align: center;
+  font-size: 0.82rem;
+  color: var(--sb-text-muted);
+  padding: 0.5rem 0;
+}
+
+.td-footer .footer-copyright a {
+  color: var(--sb-accent);
+  text-decoration: none;
+}
+
+.td-footer .footer-copyright a:hover {
+  color: var(--sb-accent-hover);
+  text-decoration: underline;
+}
+

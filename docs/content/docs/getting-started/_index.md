@@ -4,7 +4,7 @@ linkTitle: "Getting Started"
 type: docs
 weight: 1
 description: >
-  Quick start guide for running SeeBOM Labs locally or on Kubernetes.
+  Quick start guide for running SeeBOM locally or on Kubernetes.
 ---
 
 ## Prerequisites

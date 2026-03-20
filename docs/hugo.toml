@@ -1,5 +1,5 @@
-baseURL = "/"
-title = "SeeBOM Labs"
+baseURL = "https://docs.seebom.dev/"
+title = "SeeBOM"
 languageCode = "en-us"
 defaultContentLanguage = "en"
 defaultContentLanguageInSubdir = false
@@ -9,7 +9,7 @@ defaultContentLanguageInSubdir = false
   proxy = "direct"
   [module.hugoVersion]
     extended = true
-    min = "0.110.0"
+    min = "0.140.0"
   [[module.imports]]
     path = "github.com/google/docsy"
     disable = false

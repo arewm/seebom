@@ -331,7 +331,7 @@ ui:
 | `pageTitle` | string | `SeeBOM` | Browser tab title (`<title>`) |
 | `dashboard.title` | string | `Dashboard` | Dashboard page heading |
 | `dashboard.subtitle` | string | `Software Bill of Materials — Governance Overview` | Dashboard subheading |
-| `dashboard.description` | HTML string | *(SeeBOM Labs description)* | Description banner on dashboard. Supports HTML (links, bold, etc.) |
+| `dashboard.description` | HTML string | *(SeeBOM description)* | Description banner on dashboard. Supports HTML (links, bold, etc.) |
 | `dashboard.disclaimer` | HTML string | *(default disclaimer)* | Disclaimer text at bottom of dashboard. Supports HTML. |
 | `footer.enabled` | boolean | `false` | Show a footer bar below the main content |
 | `footer.text` | string | `""` | Footer text content |

@@ -8,7 +8,10 @@ import { SiteConfigService } from './core/site-config.service';
   imports: [RouterOutlet, RouterLink, RouterLinkActive],
   template: `
     <nav class="navbar">
-      <a class="brand" routerLink="/">{{ siteConfig.brandName }}</a>
+      <a class="brand" routerLink="/">
+        <img src="assets/logo.webp" alt="SeeBOM" class="brand-logo">
+        {{ siteConfig.brandName }}
+      </a>
       <div class="nav-links">
         <a routerLink="/" routerLinkActive="active" [routerLinkActiveOptions]="{exact: true}">Dashboard</a>
         <a routerLink="/sboms" routerLinkActive="active">SBOMs</a>
@@ -45,6 +48,14 @@ import { SiteConfigService } from './core/site-config.service';
       font-size: 0.95rem;
       font-weight: 700;
       letter-spacing: -0.02em;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .brand-logo {
+      width: 28px;
+      height: 28px;
+      border-radius: 4px;
     }
     .nav-links { display: flex; gap: 2px; flex: 1; }
     .nav-links a {
