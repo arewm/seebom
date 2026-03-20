@@ -7,6 +7,8 @@ description: >
   Quick start guide for running SeeBOM locally or on Kubernetes.
 ---
 
+<img src="/images/dashboard-screenshot.png" alt="SeeBOM Dashboard" style="width: 100%; border-radius: 8px; border: 1px solid var(--sb-border); margin-bottom: 2rem;">
+
 ## Prerequisites
 
 | Tool | Minimum Version |

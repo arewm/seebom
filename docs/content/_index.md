@@ -23,6 +23,12 @@ and apply VEX statements — all visualized in a fast Angular dashboard backed b
 
 {{% /blocks/lead %}}
 
+{{< blocks/section color="dark" >}}
+<div class="col-12 text-center">
+  <img src="/images/dashboard-screenshot.png" alt="SeeBOM Dashboard" style="width: 100%; max-width: 1100px; border-radius: 8px; box-shadow: 0 4px 24px rgba(0,0,0,0.4);">
+</div>
+{{< /blocks/section >}}
+
 {{< blocks/section color="dark" type="row" >}}
 
 {{% blocks/feature icon="fa-bolt" title="High Performance" url="/docs/architecture/" %}}
